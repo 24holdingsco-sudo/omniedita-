@@ -41,13 +41,16 @@ export const Background: React.FC = () => {
       vx: number;
       vy: number;
       radius: number;
+      color: string;
 
       constructor() {
         this.x = Math.random() * canvas!.width;
         this.y = Math.random() * canvas!.height;
-        this.vx = (Math.random() - 0.5) * 1;
-        this.vy = (Math.random() - 0.5) * 1;
-        this.radius = Math.random() * 2 + 1;
+        this.vx = (Math.random() - 0.5) * 0.8;
+        this.vy = (Math.random() - 0.5) * 0.8;
+        this.radius = Math.random() * 2 + 0.5;
+        const colors = ['rgba(129, 140, 248, 0.4)', 'rgba(167, 139, 250, 0.4)', 'rgba(244, 114, 182, 0.4)', 'rgba(52, 211, 153, 0.4)', 'rgba(251, 191, 36, 0.4)'];
+        this.color = colors[Math.floor(Math.random() * colors.length)];
       }
 
       update() {
@@ -62,7 +65,7 @@ export const Background: React.FC = () => {
         if (!ctx) return;
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(100, 150, 255, 0.5)';
+        ctx.fillStyle = this.color;
         ctx.fill();
       }
     }
@@ -104,7 +107,7 @@ export const Background: React.FC = () => {
             ctx.beginPath();
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(100, 150, 255, ${1 - dist / 100})`;
+            ctx.strokeStyle = `rgba(148, 163, 184, ${0.15 * (1 - dist / 100)})`;
             ctx.lineWidth = 0.5;
             ctx.stroke();
           }
@@ -119,8 +122,8 @@ export const Background: React.FC = () => {
           ctx.beginPath();
           ctx.moveTo(particles[i].x, particles[i].y);
           ctx.lineTo(mouseX, mouseY);
-          ctx.strokeStyle = `rgba(150, 200, 255, ${1 - distMouse / 150})`;
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = `rgba(129, 140, 248, ${0.3 * (1 - distMouse / 150)})`;
+          ctx.lineWidth = 0.8;
           ctx.stroke();
           
           // Apply push or pull effect
@@ -152,32 +155,35 @@ export const Background: React.FC = () => {
 
   return (
     <>
+      <div className="mesh-gradient" />
       <canvas
         ref={canvasRef}
-        className="fixed inset-0 pointer-events-none z-0 bg-slate-950"
+        className="fixed inset-0 pointer-events-none z-0"
       />
       
       {/* Background Settings Widget */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
         {showSettings && (
-          <div className="bg-slate-900/90 backdrop-blur-md p-4 rounded-xl border border-slate-700/50 shadow-2xl flex flex-col gap-4 w-64 animate-in fade-in slide-in-from-bottom-4">
-            <div className="text-sm font-semibold text-white flex items-center gap-2">
-              <Settings2 size={16} className="text-indigo-400" />
-              Background Particles
+            <div className="bg-slate-900/60 backdrop-blur-2xl p-4 rounded-2xl border border-white/10 shadow-2xl flex flex-col gap-4 w-64 animate-in fade-in slide-in-from-bottom-4">
+            <div className="text-sm font-bold text-white flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-500/20">
+                <Settings2 size={16} className="text-indigo-400" />
+              </div>
+              Studio Environment
             </div>
             
             <div className="flex flex-col gap-2">
-              <label className="text-xs text-slate-400 font-medium">Interaction Mode</label>
-              <div className="flex bg-slate-800 rounded-lg p-1">
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Interaction</label>
+              <div className="flex bg-white/5 rounded-xl p-1 border border-white/5">
                 <button
                   onClick={() => setMode('push')}
-                  className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${mode === 'push' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  className={`flex-1 text-xs py-2 rounded-lg transition-all ${mode === 'push' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   Push
                 </button>
                 <button
                   onClick={() => setMode('pull')}
-                  className={`flex-1 text-xs py-1.5 rounded-md transition-colors ${mode === 'pull' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  className={`flex-1 text-xs py-2 rounded-lg transition-all ${mode === 'pull' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   Pull
                 </button>
@@ -186,8 +192,8 @@ export const Background: React.FC = () => {
 
             <div className="flex flex-col gap-2">
               <div className="flex justify-between items-center">
-                <label className="text-xs text-slate-400 font-medium">Effect Strength</label>
-                <span className="text-xs text-indigo-400">{Math.round(strength * 1000)}%</span>
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Atmosphere</label>
+                <span className="text-[10px] font-mono text-indigo-400">{Math.round(strength * 1000)}%</span>
               </div>
               <input
                 type="range"
@@ -204,8 +210,8 @@ export const Background: React.FC = () => {
         
         <button
           onClick={() => setShowSettings(!showSettings)}
-          className={`p-3 rounded-full shadow-lg transition-all duration-300 ${showSettings ? 'bg-indigo-600 text-white' : 'bg-slate-800/80 text-slate-400 hover:bg-slate-700 hover:text-white backdrop-blur-md border border-slate-700/50'}`}
-          title="Background Settings"
+          className={`p-3 rounded-full shadow-2xl transition-all duration-500 ${showSettings ? 'bg-indigo-600 text-white rotate-90' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white backdrop-blur-xl border border-white/10'}`}
+          title="Studio Environment Settings"
         >
           <Settings2 size={20} />
         </button>

@@ -1,9 +1,58 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, ArrowRight, FileImage, FileText, Download, RefreshCw, Eye, Settings2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Upload, ArrowRight, FileImage, FileText, Download, RefreshCw, Eye, Settings2, Trash, FileType, ZoomIn, ZoomOut, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '../utils';
 import { PDFDocument } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
+// @ts-ignore
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 type CompressionLevel = 'none' | 'low' | 'medium' | 'high';
+
+const PdfPreview = ({ file }: { file: File }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [numPages, setNumPages] = useState(0);
+
+  useEffect(() => {
+    if (file.type === 'application/pdf' && canvasRef.current) {
+      const renderPage = async () => {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          setNumPages(pdf.numPages);
+          
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 1.5 });
+          const canvas = canvasRef.current!;
+          const context = canvas.getContext('2d')!;
+          
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          } as any).promise;
+        } catch (err) {
+          console.error('Error rendering PDF preview:', err);
+        }
+      };
+      renderPage();
+    }
+  }, [file]);
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-800/50 rounded-lg overflow-hidden">
+      <canvas ref={canvasRef} className="max-w-full max-h-full object-contain" />
+      {numPages > 0 && (
+        <div className="absolute bottom-4 right-4 bg-black/50 px-3 py-1.5 rounded-lg text-xs font-bold text-white backdrop-blur-md">
+          {numPages} Page{numPages > 1 ? 's' : ''}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const Converter: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -11,11 +60,20 @@ export const Converter: React.FC = () => {
   const [targetFormat, setTargetFormat] = useState<string>('pdf');
   const [compression, setCompression] = useState<CompressionLevel>('none');
   const [isConverting, setIsConverting] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     if (file) {
       const url = URL.createObjectURL(file);
       setFileUrl(url);
+      
+      if (file.type === 'application/pdf') {
+        setTargetFormat('png');
+      } else if (file.type.startsWith('image/') || file.type === 'image/svg+xml') {
+        setTargetFormat('pdf');
+      }
+
       return () => URL.revokeObjectURL(url);
     } else {
       setFileUrl(null);
@@ -26,6 +84,40 @@ export const Converter: React.FC = () => {
     if (e.target.files?.[0]) {
       setFile(e.target.files[0]);
     }
+  };
+
+  const convertSvgToImage = (svgFile: File, format: string): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const svgText = e.target?.result as string;
+        const img = new Image();
+        const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width || 800;
+          canvas.height = img.height || 600;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return reject('Canvas not supported');
+          
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          
+          canvas.toBlob((blob) => {
+            if (blob) resolve(blob);
+            else reject('SVG conversion failed');
+          }, `image/${format}`, 0.92);
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = reject;
+        img.src = url;
+      };
+      reader.onerror = reject;
+      reader.readAsText(svgFile);
+    });
   };
 
   const getCompressionQuality = (level: CompressionLevel): number => {
@@ -46,7 +138,7 @@ export const Converter: React.FC = () => {
     }
   };
 
-  const compressImage = (imageFile: File, quality: number, scale: number): Promise<Blob> => {
+  const compressImage = (imageFile: File | Blob, quality: number, scale: number): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const url = URL.createObjectURL(imageFile);
@@ -57,14 +149,11 @@ export const Converter: React.FC = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return reject('Canvas not supported');
         
-        // Use better interpolation for downscaling if possible
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         
-        // Always compress to JPEG for PDF embedding to save space, unless it's a PNG with transparency
-        // For simplicity in this demo, we'll use JPEG
         canvas.toBlob((blob) => {
           if (blob) resolve(blob);
           else reject('Compression failed');
@@ -79,7 +168,7 @@ export const Converter: React.FC = () => {
   const convertImageToPdf = async (imageFile: File) => {
     const pdfDoc = await PDFDocument.create();
     
-    let processedFile = imageFile;
+    let processedFile: File | Blob = imageFile;
     let imageBytes = await processedFile.arrayBuffer();
     let isJpeg = imageFile.type === 'image/jpeg';
 
@@ -88,7 +177,7 @@ export const Converter: React.FC = () => {
       const scale = getCompressionScale(compression);
       const compressedBlob = await compressImage(imageFile, quality, scale);
       imageBytes = await compressedBlob.arrayBuffer();
-      isJpeg = true; // compressImage returns JPEG
+      isJpeg = true;
     }
     
     let image;
@@ -97,7 +186,6 @@ export const Converter: React.FC = () => {
     } else if (imageFile.type === 'image/png') {
       image = await pdfDoc.embedPng(imageBytes);
     } else {
-      // If it's neither (e.g., WebP), we must convert it to JPEG first
       const compressedBlob = await compressImage(imageFile, 1.0, 1.0);
       imageBytes = await compressedBlob.arrayBuffer();
       image = await pdfDoc.embedJpg(imageBytes);
@@ -113,6 +201,30 @@ export const Converter: React.FC = () => {
 
     const pdfBytes = await pdfDoc.save();
     return new Blob([pdfBytes], { type: 'application/pdf' });
+  };
+
+  const convertPdfToImage = async (pdfFile: File, format: string): Promise<Blob[]> => {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const blobs: Blob[] = [];
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2.0 });
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: ctx, viewport } as any).promise;
+
+      const blob = await new Promise<Blob | null>((resolve) => 
+        canvas.toBlob((b) => resolve(b), `image/${format}`, 0.92)
+      );
+      if (blob) blobs.push(blob);
+    }
+    return blobs;
   };
 
   const convertImageFormat = (imageFile: File, format: string): Promise<Blob> => {
@@ -151,26 +263,45 @@ export const Converter: React.FC = () => {
     setIsConverting(true);
 
     try {
-      let resultBlob: Blob;
-      
-      if (file.type.startsWith('image/')) {
+      if (file.type === 'application/pdf') {
+        const blobs = await convertPdfToImage(file, targetFormat);
+        for (let i = 0; i < blobs.length; i++) {
+          const url = URL.createObjectURL(blobs[i]);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `converted-page-${i + 1}-${Date.now()}.${targetFormat}`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      } else if (file.type.startsWith('image/')) {
+        let resultBlob: Blob;
         if (targetFormat === 'pdf') {
           resultBlob = await convertImageToPdf(file);
         } else {
           resultBlob = await convertImageFormat(file, targetFormat);
         }
-      } else {
-        alert('Currently only image conversions are supported in this demo.');
-        setIsConverting(false);
-        return;
+        const url = URL.createObjectURL(resultBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `converted-${compression !== 'none' ? 'compressed-' : ''}${Date.now()}.${targetFormat}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else if (file.type === 'image/svg+xml') {
+        let resultBlob: Blob;
+        if (targetFormat === 'pdf') {
+          const pngBlob = await convertSvgToImage(file, 'png');
+          const pngFile = new File([pngBlob], 'temp.png', { type: 'image/png' });
+          resultBlob = await convertImageToPdf(pngFile);
+        } else {
+          resultBlob = await convertSvgToImage(file, targetFormat);
+        }
+        const url = URL.createObjectURL(resultBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `converted-${Date.now()}.${targetFormat}`;
+        a.click();
+        URL.revokeObjectURL(url);
       }
-
-      const url = URL.createObjectURL(resultBlob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `converted-${compression !== 'none' ? 'compressed-' : ''}${Date.now()}.${targetFormat}`;
-      a.click();
-      URL.revokeObjectURL(url);
     } catch (error) {
       console.error(error);
       alert('Conversion failed.');
@@ -180,117 +311,149 @@ export const Converter: React.FC = () => {
   };
 
   const isCompressible = targetFormat === 'jpeg' || targetFormat === 'webp' || targetFormat === 'pdf';
+  const isPdfInput = file?.type === 'application/pdf';
 
   return (
-    <div className="flex h-full bg-slate-900/50 backdrop-blur-md rounded-none md:rounded-2xl border-0 md:border border-slate-700/50 overflow-y-auto">
-      <div className="flex-1 p-4 md:p-8 flex flex-col items-center justify-center max-w-4xl mx-auto w-full">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-white mb-4">Universal Converter</h1>
-          <p className="text-slate-400">Convert and compress images to PDF, PNG, JPEG, or WebP entirely in your browser.</p>
-        </div>
+    <div className={cn(
+      "flex flex-col lg:flex-row h-full overflow-hidden transition-all duration-300",
+      isFullscreen && "fixed inset-0 z-[100] bg-slate-950"
+    )}>
+      {/* Sidebar Dashboard */}
+      {!isFullscreen && (
+        <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-2">Dashboard</h2>
+          
+          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
+            <Upload size={18} />
+            <span>Upload File</span>
+            <input type="file" className="hidden" onChange={handleFileUpload} accept="image/*,application/pdf,image/svg+xml" />
+          </label>
 
-        <div className="w-full bg-slate-800/80 rounded-2xl border border-slate-700 p-8 shadow-2xl flex flex-col gap-8">
-          <div className="flex flex-col md:flex-row items-center gap-8">
+          <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
+
+          <div className="flex flex-col gap-4 bg-black/5 dark:bg-white/5 p-4 rounded-2xl border border-black/5 dark:border-white/5">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              <Settings2 size={14} />
+              Conversion Settings
+            </div>
             
-            {/* Source File */}
-            <div className="flex-1 w-full">
-              <label className={cn(
-                "flex flex-col items-center justify-center h-48 border-2 border-dashed rounded-xl cursor-pointer transition-colors relative overflow-hidden",
-                file ? "border-emerald-500 bg-emerald-500/10" : "border-slate-600 hover:border-slate-500 bg-slate-900/50"
-              )}>
-                <input type="file" className="hidden" onChange={handleFileUpload} accept="image/*" />
-                {file && fileUrl ? (
-                  <div className="absolute inset-0 flex items-center justify-center p-2">
-                    <img src={fileUrl} alt="Preview" className="max-w-full max-h-full object-contain opacity-30 blur-[2px]" />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4 z-10">
-                      <FileImage className="w-12 h-12 text-emerald-400 mx-auto mb-2 drop-shadow-md" />
-                      <p className="text-white font-medium truncate max-w-[200px] drop-shadow-md">{file.name}</p>
-                      <p className="text-sm text-slate-200 drop-shadow-md">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center p-4">
-                    <Upload className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-                    <p className="text-slate-300 font-medium">Select File</p>
-                  </div>
-                )}
-              </label>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Target Format</label>
+              <select
+                value={targetFormat}
+                onChange={(e) => {
+                  setTargetFormat(e.target.value);
+                  if (e.target.value === 'png') setCompression('none');
+                }}
+                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-700 dark:text-white rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 transition-colors"
+              >
+                {!isPdfInput && <option value="pdf">PDF Document</option>}
+                <option value="png">PNG Image</option>
+                <option value="jpeg">JPEG Image</option>
+                <option value="webp">WebP Image</option>
+              </select>
             </div>
 
-            <ArrowRight className="w-8 h-8 text-slate-500 hidden md:block" />
-
-            {/* Target Format & Settings */}
-            <div className="flex-1 w-full">
-              <div className="h-48 bg-slate-900/50 rounded-xl border border-slate-700 p-6 flex flex-col justify-center gap-4">
-                <div>
-                  <label className="text-sm font-medium text-slate-400 mb-2 block">Convert to:</label>
-                  <select
-                    value={targetFormat}
-                    onChange={(e) => {
-                      setTargetFormat(e.target.value);
-                      if (e.target.value === 'png') setCompression('none');
-                    }}
-                    className="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-4 py-2 outline-none focus:border-indigo-500 transition-colors"
-                  >
-                    <option value="pdf">PDF Document</option>
-                    <option value="png">PNG Image</option>
-                    <option value="jpeg">JPEG Image</option>
-                    <option value="webp">WebP Image</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2">
-                    <Settings2 size={16} />
-                    Compression Level:
-                  </label>
-                  <select
-                    value={compression}
-                    onChange={(e) => setCompression(e.target.value as CompressionLevel)}
-                    disabled={!isCompressible}
-                    className="w-full bg-slate-800 border border-slate-600 text-white rounded-lg px-4 py-2 outline-none focus:border-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="none">None (Original Quality)</option>
-                    <option value="low">Low (Good Quality, Smaller File)</option>
-                    <option value="medium">Medium (Fair Quality, Small File)</option>
-                    <option value="high">High (Low Quality, Smallest File)</option>
-                  </select>
-                  {!isCompressible && (
-                    <p className="text-xs text-slate-500 mt-1">Compression not available for PNG.</p>
-                  )}
-                </div>
-              </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Compression</label>
+              <select
+                value={compression}
+                onChange={(e) => setCompression(e.target.value as CompressionLevel)}
+                disabled={!isCompressible || isPdfInput}
+                className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-700 dark:text-white rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="none">None (Original)</option>
+                <option value="low">Low (Good)</option>
+                <option value="medium">Medium (Small)</option>
+                <option value="high">High (Smallest)</option>
+              </select>
             </div>
           </div>
 
-          {/* Preview Area */}
-          {fileUrl && (
-            <div className="w-full bg-slate-900/50 rounded-xl border border-slate-700 p-4 flex flex-col items-center">
-              <div className="flex items-center gap-2 text-slate-300 mb-4 w-full">
-                <Eye size={18} />
-                <span className="font-medium">Preview</span>
-              </div>
-              <div className="relative w-full max-w-md aspect-video bg-black/50 rounded-lg overflow-hidden flex items-center justify-center border border-slate-700">
-                <img src={fileUrl} alt="Full Preview" className="max-w-full max-h-full object-contain" />
-              </div>
-            </div>
-          )}
-
-          <div className="pt-4 border-t border-slate-700 flex justify-center">
+          <div className="mt-auto pt-4 flex flex-col gap-2">
             <button
               onClick={handleConvert}
               disabled={!file || isConverting}
-              className="flex items-center gap-2 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500 text-white rounded-xl font-medium text-lg transition-all transform hover:scale-105 active:scale-95 disabled:hover:scale-100"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs disabled:opacity-30"
             >
-              {isConverting ? (
-                <RefreshCw className="animate-spin" size={24} />
-              ) : (
-                <Download size={24} />
-              )}
+              {isConverting ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
               <span>{isConverting ? 'Processing...' : 'Convert & Download'}</span>
+            </button>
+            
+            <button
+              onClick={() => setFile(null)}
+              disabled={!file || isConverting}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+            >
+              <Trash size={18} />
+              <span>Clear File</span>
             </button>
           </div>
         </div>
+      )}
+
+      {/* Preview Area */}
+      <div className="flex-1 relative flex flex-col bg-slate-200/50 dark:bg-black/40 overflow-hidden">
+        {/* Preview Toolbar */}
+        {fileUrl && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 glass-panel px-4 py-2 rounded-2xl flex items-center gap-4 shadow-xl">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setZoom(z => Math.max(0.2, z - 0.1))} className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all">
+                <ZoomOut size={18} />
+              </button>
+              <span className="text-xs font-mono w-12 text-center font-bold text-slate-500">{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all">
+                <ZoomIn size={18} />
+              </button>
+            </div>
+            <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
+            <button 
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all"
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4 md:p-8">
+          {!fileUrl ? (
+            <div className="text-center text-slate-400 flex flex-col items-center gap-4">
+              <FileType className="w-16 h-16 opacity-20" />
+              <p className="text-sm font-medium">Select a file to start converting</p>
+            </div>
+          ) : (
+            <div 
+              className="relative w-full max-w-4xl aspect-video bg-white dark:bg-slate-900 rounded-xl overflow-hidden shadow-2xl transition-transform duration-300 flex items-center justify-center"
+              style={{ 
+                transform: `scale(${zoom})`,
+                transformOrigin: 'center center'
+              }}
+            >
+              {isPdfInput ? (
+                <PdfPreview file={file!} />
+              ) : (
+                <img src={fileUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
+              )}
+            </div>
+          )}
+        </div>
+
+        {file && !isFullscreen && (
+          <div className="p-4 bg-white/5 border-t border-black/5 dark:border-white/5">
+            <div className="max-w-4xl mx-auto flex justify-between items-center">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">File Name</span>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate max-w-[200px]">{file.name}</span>
+              </div>
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Size</span>
+                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

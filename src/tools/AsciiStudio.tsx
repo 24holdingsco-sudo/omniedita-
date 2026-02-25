@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Upload, Settings2, Download, Copy, RefreshCcw } from 'lucide-react';
+import { Camera, Upload, Settings2, Download, Copy, RefreshCcw, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, Trash, Hash } from 'lucide-react';
+import { cn } from '../utils';
 
-const ASCII_RAMP = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\"^`'. ";
+const ASCII_RAMP = "@#NW$M%&K*X01okxdcl{}[]()|/\\^<>+~:;,\"'. ";
 
 export const AsciiStudio: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -15,8 +16,10 @@ export const AsciiStudio: React.FC = () => {
   
   const [contrast, setContrast] = useState(20);
   const [threshold, setThreshold] = useState(15);
-  const [resolution, setResolution] = useState(120);
+  const [charSize, setCharSize] = useState(12);
   const [copied, setCopied] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const escapeHtml = (c: string) => {
     if (c === ' ') return '&nbsp;';
@@ -24,6 +27,8 @@ export const AsciiStudio: React.FC = () => {
     if (c === '>') return '&gt;';
     if (c === '&') return '&amp;';
     if (c === '"') return '&quot;';
+    if (c === "'") return '&#39;';
+    if (c === '`') return '&#96;';
     return c;
   };
 
@@ -34,8 +39,11 @@ export const AsciiStudio: React.FC = () => {
     if (!canvas || !ctx || !output) return;
 
     const aspect = sourceWidth / sourceHeight;
-    const width = resolution;
-    const height = Math.floor((width / aspect) * 0.55);
+    const cols = Math.floor(sourceWidth / (charSize * 2));
+    const rows = Math.floor(cols / aspect);
+    
+    const width = cols;
+    const height = rows;
 
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
@@ -49,8 +57,6 @@ export const AsciiStudio: React.FC = () => {
     const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
     let html = '';
     
-    // Optimize threshold calculation (squared threshold to avoid Math.sqrt in the inner loop)
-    // Scale threshold to match previous visual behavior (0-100 scale)
     const effectiveThreshold = threshold * 4.41;
     const thresholdSq = effectiveThreshold * effectiveThreshold;
 
@@ -78,7 +84,6 @@ export const AsciiStudio: React.FC = () => {
           currentSpanColor = {r, g, b};
           currentSpanText = char;
         } else {
-          // Optimized distance calculation (Squared Euclidean)
           const dr = r - currentSpanColor.r;
           const dg = g - currentSpanColor.g;
           const db = b - currentSpanColor.b;
@@ -120,13 +125,13 @@ export const AsciiStudio: React.FC = () => {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
-  }, [isPlaying, isVideo, contrast, threshold, resolution]);
+  }, [isPlaying, isVideo, contrast, threshold, charSize]);
 
   useEffect(() => {
     if (!isPlaying && imgRef.current && imgRef.current.src) {
       processFrame(imgRef.current, imgRef.current.width, imgRef.current.height);
     }
-  }, [contrast, threshold, resolution]);
+  }, [contrast, threshold, charSize]);
 
   const startCamera = async () => {
     try {
@@ -180,7 +185,6 @@ export const AsciiStudio: React.FC = () => {
   const handleCopy = async () => {
     if (!outputRef.current) return;
     try {
-      // Create a temporary element to extract plain text without HTML tags
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = outputRef.current.innerHTML.replace(/<br\s*\/?>/gi, '\n');
       await navigator.clipboard.writeText(tempDiv.textContent || '');
@@ -237,128 +241,188 @@ export const AsciiStudio: React.FC = () => {
   const handleReset = () => {
     setContrast(20);
     setThreshold(15);
-    setResolution(120);
+    setCharSize(12);
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full bg-slate-900/50 backdrop-blur-md rounded-none md:rounded-2xl border-0 md:border border-slate-700/50 overflow-hidden">
-      <div className="w-full lg:w-72 bg-slate-800/80 border-b lg:border-b-0 lg:border-r border-slate-700/50 p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-        <h2 className="text-lg font-semibold text-white mb-2">ASCII Studio</h2>
-        
-        <button
-          onClick={startCamera}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-        >
-          <Camera size={18} />
-          <span>Start Camera</span>
-        </button>
-
-        <label className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer transition-colors">
-          <Upload size={18} />
-          <span>Upload Media</span>
-          <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
-        </label>
-
-        <div className="h-px bg-slate-700/50 my-2" />
-
-        <div className="flex flex-col gap-4 bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
-              <Settings2 size={16} />
-              ASCII Settings
-            </div>
-            <button
-              onClick={handleReset}
-              className="text-slate-500 hover:text-slate-300 transition-colors"
-              title="Reset Settings"
-            >
-              <RefreshCcw size={14} />
-            </button>
-          </div>
+    <div className={cn(
+      "flex flex-col lg:flex-row h-full overflow-hidden transition-all duration-300",
+      isFullscreen && "fixed inset-0 z-[100] bg-slate-950"
+    )}>
+      {/* Sidebar Dashboard */}
+      {!isFullscreen && (
+        <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
+          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-2">Dashboard</h2>
           
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between">
-              <label className="text-xs text-slate-400">Contrast Boost</label>
-              <span className="text-xs text-slate-500">{contrast}</span>
+          <button
+            onClick={startCamera}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 font-bold"
+          >
+            <Camera size={18} />
+            <span>Start Camera</span>
+          </button>
+
+          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
+            <Upload size={18} />
+            <span>Upload Media</span>
+            <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+          </label>
+
+          <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
+
+          <div className="flex flex-col gap-4 bg-black/5 dark:bg-white/5 p-4 rounded-2xl border border-black/5 dark:border-white/5">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <Settings2 size={14} />
+                ASCII Settings
+              </div>
+              <button
+                onClick={handleReset}
+                className="text-slate-500 hover:text-indigo-500 transition-colors"
+                title="Reset Settings"
+              >
+                <RefreshCcw size={14} />
+              </button>
             </div>
-            <input
-              type="range"
-              min="-100"
-              max="100"
-              value={contrast}
-              onChange={(e) => setContrast(parseInt(e.target.value))}
-              className="w-full accent-indigo-500"
-            />
+            
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Contrast</label>
+                <span className="text-[10px] font-mono text-indigo-500">{contrast}</span>
+              </div>
+              <input
+                type="range"
+                min="-100"
+                max="100"
+                value={contrast}
+                onChange={(e) => setContrast(parseInt(e.target.value))}
+                className="w-full accent-indigo-500"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Color Grouping</label>
+                <span className="text-[10px] font-mono text-indigo-500">{threshold}</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={threshold}
+                onChange={(e) => setThreshold(parseInt(e.target.value))}
+                className="w-full accent-indigo-500"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Char Size</label>
+                <span className="text-[10px] font-mono text-indigo-500">{charSize}px</span>
+              </div>
+              <input
+                type="range"
+                min="4"
+                max="30"
+                value={charSize}
+                onChange={(e) => setCharSize(parseInt(e.target.value))}
+                className="w-full accent-indigo-500"
+              />
+            </div>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between">
-              <label className="text-xs text-slate-400">Color Grouping (ΔE)</label>
-              <span className="text-xs text-slate-500">{threshold}</span>
-            </div>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={threshold}
-              onChange={(e) => setThreshold(parseInt(e.target.value))}
-              className="w-full accent-indigo-500"
-              title="Higher values group more colors together, improving performance"
-            />
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-between">
-              <label className="text-xs text-slate-400">Resolution</label>
-              <span className="text-xs text-slate-500">{resolution}px</span>
-            </div>
-            <input
-              type="range"
-              min="50"
-              max="300"
-              value={resolution}
-              onChange={(e) => setResolution(parseInt(e.target.value))}
-              className="w-full accent-indigo-500"
-            />
+          <div className="mt-auto pt-4 flex flex-col gap-2">
+            {(isPlaying || imgRef.current?.src) && (
+              <>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-slate-700 dark:text-white rounded-xl transition-all border border-black/5 dark:border-white/5 font-bold text-xs"
+                >
+                  <Copy size={16} className="text-indigo-500" />
+                  <span>{copied ? 'Copied!' : 'Copy ASCII Text'}</span>
+                </button>
+                <button
+                  onClick={handleDownloadHtml}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs"
+                >
+                  <Download size={16} />
+                  <span>Save as HTML</span>
+                </button>
+              </>
+            )}
+            
+            <button
+              onClick={() => {
+                setIsPlaying(false);
+                setIsVideo(false);
+                if (videoRef.current) {
+                  if (videoRef.current.srcObject) {
+                    (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+                    videoRef.current.srcObject = null;
+                  }
+                  videoRef.current.src = '';
+                }
+                if (imgRef.current) imgRef.current.src = '';
+                if (outputRef.current) outputRef.current.innerHTML = '';
+              }}
+              disabled={!isPlaying && !imgRef.current?.src}
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+            >
+              <Trash2 size={18} />
+              <span>Clear Media</span>
+            </button>
           </div>
         </div>
+      )}
 
+      {/* Preview Area */}
+      <div className="flex-1 relative flex flex-col bg-slate-200/50 dark:bg-black/40 overflow-hidden">
+        {/* Preview Toolbar */}
         {(isPlaying || imgRef.current?.src) && (
-          <div className="flex flex-col gap-2 mt-2">
-            <button
-              onClick={handleCopy}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 glass-panel px-4 py-2 rounded-2xl flex items-center gap-4 shadow-xl">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setZoom(z => Math.max(0.2, z - 0.1))} className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all">
+                <ZoomOut size={18} />
+              </button>
+              <span className="text-xs font-mono w-12 text-center font-bold text-slate-500">{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all">
+                <ZoomIn size={18} />
+              </button>
+            </div>
+            <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
+            <button 
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all"
+              title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
             >
-              <Copy size={16} />
-              <span>{copied ? 'Copied!' : 'Copy ASCII Text'}</span>
-            </button>
-            <button
-              onClick={handleDownloadHtml}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
-            >
-              <Download size={16} />
-              <span>Save as HTML</span>
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
             </button>
           </div>
         )}
-      </div>
 
-      <div className="flex-1 bg-[#050505] overflow-auto flex items-center justify-center relative">
-        <video ref={videoRef} className="hidden" playsInline loop muted />
-        <img ref={imgRef} className="hidden" alt="" />
-        <canvas ref={canvasRef} className="hidden" />
-        
-        <div 
-          ref={outputRef}
-          className="font-mono font-bold text-[8px] leading-[1.0] whitespace-pre text-center p-4"
-          style={{ fontFamily: "'Cascadia Code', 'Courier New', Courier, monospace" }}
-        >
-          {/* ASCII Output goes here */}
-          {!isPlaying && !imgRef.current?.src && (
-            <div className="text-slate-600 text-sm font-sans">
-              Start camera or upload media to begin
-            </div>
-          )}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4 md:p-8">
+          <video ref={videoRef} className="hidden" playsInline loop muted />
+          <img ref={imgRef} className="hidden" alt="" />
+          <canvas ref={canvasRef} className="hidden" />
+          
+          <div 
+            ref={outputRef}
+            className="font-mono font-bold whitespace-pre text-center p-4 transition-transform duration-300"
+            style={{ 
+              fontFamily: "'Cascadia Code', 'Courier New', Courier, monospace",
+              fontSize: `${charSize}px`,
+              lineHeight: '1.0',
+              transform: `scale(${zoom})`,
+              transformOrigin: 'center center'
+            }}
+          >
+            {!isPlaying && !imgRef.current?.src && (
+              <div className="text-slate-400 text-sm font-sans flex flex-col items-center gap-4">
+                <Hash className="w-16 h-16 opacity-20" />
+                <p className="font-medium">Start camera or upload media to begin</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

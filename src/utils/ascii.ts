@@ -1,4 +1,4 @@
-export const ASCII_CHARS = " .',:;!~+-xmo*#0123456789abcdefghijklmnopqrstuvwx";
+export const ASCII_CHARS = "@#NW$M%&K*X01okxdcl{}[]()|/\\^<>+~:;,\"'. ";
 
 export function createAsciiImage(
   sourceImage: HTMLImageElement | HTMLVideoElement | HTMLCanvasElement,
@@ -42,7 +42,8 @@ export function createAsciiImage(
       // Calculate brightness (0-255)
       const brightness = (r * 0.299 + g * 0.587 + b * 0.114);
       
-      // Map brightness to character index
+      // Map brightness to character index (inverted: 0 is dark, 255 is light)
+      // Our ramp is dense to light, so dark brightness (low) should pick dense chars (low index)
       const charIndex = Math.floor((brightness / 255) * (ASCII_CHARS.length - 1));
       const char = ASCII_CHARS[charIndex];
 

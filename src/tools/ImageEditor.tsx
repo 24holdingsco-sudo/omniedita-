@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Image as KonvaImage, Text, Transformer } from 'react-konva';
 import useImage from 'use-image';
-import { Upload, Download, Type, Image as ImageIcon, RotateCw, Crop, Trash2, Scissors, RefreshCw, SlidersHorizontal, X, Save, FolderOpen, Undo2, Redo2, Hash, Trash } from 'lucide-react';
+import { Upload, Download, Type, Image as ImageIcon, RotateCw, Crop, Trash2, Scissors, RefreshCw, SlidersHorizontal, X, Save, FolderOpen, Undo2, Redo2, Hash, Trash, ZoomIn, ZoomOut, Maximize2, Minimize2, Settings2 } from 'lucide-react';
 import { cn } from '../utils';
 import { removeBackground } from '@imgly/background-removal';
 import Konva from 'konva';
@@ -64,24 +64,24 @@ const CropModal = ({ src, onComplete, onCancel }: { src: string, onComplete: (cr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-8 backdrop-blur-sm">
-      <div className="bg-slate-900 rounded-2xl p-6 w-full max-w-4xl max-h-full flex flex-col gap-4 border border-slate-700 shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 md:p-8 backdrop-blur-sm">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 w-full max-w-4xl max-h-full flex flex-col gap-4 border border-black/10 dark:border-slate-700 shadow-2xl">
         <div className="flex justify-between items-center">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <Crop size={20} className="text-indigo-400" />
+          <h3 className="text-xl font-bold flex items-center gap-2">
+            <Crop size={20} className="text-indigo-500" />
             Crop Image
           </h3>
-          <button onClick={onCancel} className="text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-slate-800">
+          <button onClick={onCancel} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors p-1 rounded-lg hover:bg-black/5 dark:hover:bg-slate-800">
             <X size={20} />
           </button>
         </div>
-        <div className="flex-1 overflow-auto bg-slate-950 rounded-xl flex items-center justify-center p-4 border border-slate-800 min-h-[400px]">
+        <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 rounded-xl flex items-center justify-center p-4 border border-black/5 dark:border-slate-800 min-h-[300px] md:min-h-[400px]">
           <ReactCrop crop={crop} onChange={c => setCrop(c)} onComplete={c => setCompletedCrop(c)}>
-            <img ref={imgRef} src={src} alt="Crop me" className="max-w-full max-h-[60vh] object-contain" />
+            <img ref={imgRef} src={src} alt="Crop me" className="max-w-full max-h-[50vh] md:max-h-[60vh] object-contain" />
           </ReactCrop>
         </div>
         <div className="flex justify-end gap-3 pt-2">
-          <button onClick={onCancel} className="px-5 py-2.5 rounded-xl bg-slate-800 text-white hover:bg-slate-700 font-medium transition-colors">Cancel</button>
+          <button onClick={onCancel} className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-white hover:bg-slate-200 dark:hover:bg-slate-700 font-medium transition-colors">Cancel</button>
           <button onClick={handleCrop} className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 font-medium transition-colors">Apply Crop</button>
         </div>
       </div>
@@ -228,6 +228,8 @@ export const ImageEditor: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
     const updateSize = () => {
@@ -327,6 +329,8 @@ export const ImageEditor: React.FC = () => {
     }
   };
 
+  const [asciiCharSize, setAsciiCharSize] = useState(12);
+
   const applyAsciiFilter = () => {
     if (!selectedId) return;
     
@@ -336,7 +340,7 @@ export const ImageEditor: React.FC = () => {
     const img = new window.Image();
     img.crossOrigin = "Anonymous";
     img.onload = () => {
-      const canvas = createAsciiImage(img, img.width, img.height, 8);
+      const canvas = createAsciiImage(img, img.width, img.height, asciiCharSize);
       const asciiUrl = canvas.toDataURL('image/png');
       
       setElements(elements.map(el => {
@@ -397,202 +401,257 @@ export const ImageEditor: React.FC = () => {
     }
   };
 
+  const baseScale = Math.min(
+    (containerSize.width - 64) / 800,
+    (containerSize.height - 64) / 600,
+    1
+  );
+  const stageScale = baseScale * zoom;
+
   return (
-    <div className="flex flex-col lg:flex-row h-full bg-slate-900/50 backdrop-blur-md rounded-none md:rounded-2xl border-0 md:border border-slate-700/50 overflow-hidden relative">
-      {/* Sidebar Tools */}
-      <div className="w-full lg:w-72 bg-slate-800/80 border-b lg:border-b-0 lg:border-r border-slate-700/50 p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-semibold text-white">Image Editor</h2>
-          <div className="flex gap-1">
-            <button
-              onClick={undo}
-              disabled={!canUndo}
-              className="p-1.5 rounded-lg bg-slate-700/50 text-slate-300 hover:bg-slate-600 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title="Undo"
-            >
-              <Undo2 size={16} />
-            </button>
-            <button
-              onClick={redo}
-              disabled={!canRedo}
-              className="p-1.5 rounded-lg bg-slate-700/50 text-slate-300 hover:bg-slate-600 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title="Redo"
-            >
-              <Redo2 size={16} />
-            </button>
-          </div>
-        </div>
-        
-        <label className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg cursor-pointer transition-colors">
-          <Upload size={18} />
-          <span>Upload Image</span>
-          <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-        </label>
-
-        <button
-          onClick={addText}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
-        >
-          <Type size={18} />
-          <span>Add Text</span>
-        </button>
-
-        <div className="h-px bg-slate-700/50 my-2" />
-
-        <button
-          onClick={() => setIsCropping(true)}
-          disabled={!isImageSelected}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Crop size={18} />
-          <span>Crop Image</span>
-        </button>
-
-        <button
-          onClick={handleRemoveBackground}
-          disabled={!isImageSelected || isRemovingBg}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isRemovingBg ? <RefreshCw size={18} className="animate-spin" /> : <Scissors size={18} />}
-          <span>{isRemovingBg ? 'Removing...' : 'Remove BG'}</span>
-        </button>
-
-        <button
-          onClick={applyAsciiFilter}
-          disabled={!isImageSelected}
-          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Convert image to ASCII art"
-        >
-          <Hash size={18} />
-          <span>ASCII Art Filter</span>
-        </button>
-
-        {isImageSelected && selectedElement && (
-          <div className="flex flex-col gap-4 mt-2 p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-300 mb-1">
-              <SlidersHorizontal size={16} />
-              Filters
-            </div>
-            
-            <div className="flex flex-col gap-3">
-              <label className="flex items-center gap-3 text-sm text-white cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!selectedElement.grayscale}
-                  onChange={(e) => {
-                    setElements(elements.map(el => el.id === selectedId ? { ...el, grayscale: e.target.checked } : el));
-                  }}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
-                />
-                Grayscale
-              </label>
-
-              <label className="flex items-center gap-3 text-sm text-white cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!selectedElement.sepia}
-                  onChange={(e) => {
-                    setElements(elements.map(el => el.id === selectedId ? { ...el, sepia: e.target.checked } : el));
-                  }}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-800 text-indigo-500 focus:ring-indigo-500 focus:ring-offset-slate-900"
-                />
-                Sepia
-              </label>
-
-              <div className="flex flex-col gap-2 mt-2">
-                <div className="flex justify-between">
-                  <label className="text-xs text-slate-400">Brightness</label>
-                  <span className="text-xs text-slate-500">{Math.round((selectedElement.brightness || 0) * 100)}%</span>
-                </div>
-                <input
-                  type="range"
-                  min="-1"
-                  max="1"
-                  step="0.05"
-                  value={selectedElement.brightness || 0}
-                  onChange={(e) => {
-                    setElements(elements.map(el => el.id === selectedId ? { ...el, brightness: parseFloat(e.target.value) } : el));
-                  }}
-                  className="w-full accent-indigo-500"
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <div className="flex justify-between">
-                  <label className="text-xs text-slate-400">Contrast</label>
-                  <span className="text-xs text-slate-500">{Math.round((selectedElement.contrast || 0))}</span>
-                </div>
-                <input
-                  type="range"
-                  min="-100"
-                  max="100"
-                  step="1"
-                  value={selectedElement.contrast || 0}
-                  onChange={(e) => {
-                    setElements(elements.map(el => el.id === selectedId ? { ...el, contrast: parseFloat(e.target.value) } : el));
-                  }}
-                  className="w-full accent-indigo-500"
-                />
-              </div>
+    <div className={cn(
+      "flex flex-col lg:flex-row h-full overflow-hidden transition-all duration-300",
+      isFullscreen && "fixed inset-0 z-[100] bg-slate-950"
+    )}>
+      {/* Sidebar Dashboard */}
+      {!isFullscreen && (
+        <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Dashboard</h2>
+            <div className="flex gap-1">
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+                title="Undo"
+              >
+                <Undo2 size={16} />
+              </button>
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+                title="Redo"
+              >
+                <Redo2 size={16} />
+              </button>
             </div>
           </div>
-        )}
+          
+          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
+            <Upload size={18} />
+            <span>Upload Image</span>
+            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+          </label>
 
-        <div className="h-px bg-slate-700/50 my-2" />
+          <button
+            onClick={addText}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all border border-black/5 dark:border-white/5 font-medium"
+          >
+            <Type size={18} className="text-indigo-500" />
+            <span>Add Text</span>
+          </button>
 
-        <button
-          onClick={deleteSelected}
-          disabled={!selectedId}
-          className="flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Trash2 size={18} />
-          <span>Delete Selected</span>
-        </button>
+          <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
 
-        <div className="mt-auto pt-4 flex flex-col gap-2">
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={saveProject}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm"
-              title="Save Project"
+              onClick={() => setIsCropping(true)}
+              disabled={!isImageSelected}
+              className="flex flex-col items-center gap-2 p-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all border border-black/5 dark:border-white/5 disabled:opacity-30"
             >
-              <Save size={16} />
-              <span>Save</span>
+              <Crop size={20} className="text-indigo-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Crop</span>
             </button>
+
             <button
-              onClick={loadProject}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm"
-              title="Load Project"
+              onClick={handleRemoveBackground}
+              disabled={!isImageSelected || isRemovingBg}
+              className="flex flex-col items-center gap-2 p-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all border border-black/5 dark:border-white/5 disabled:opacity-30"
             >
-              <FolderOpen size={16} />
-              <span>Load</span>
+              {isRemovingBg ? <RefreshCw size={20} className="animate-spin text-indigo-500" /> : <Scissors size={20} className="text-indigo-500" />}
+              <span className="text-[10px] font-bold uppercase tracking-wider">Remove BG</span>
             </button>
           </div>
-          <div className="flex gap-2">
+
+          <div className="flex flex-col gap-3 p-4 bg-black/5 dark:bg-white/5 rounded-2xl border border-black/5 dark:border-white/5">
             <button
-              onClick={clearCanvas}
-              disabled={elements.length === 0}
-              className="flex-1 flex justify-center items-center gap-2 px-4 py-3 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={applyAsciiFilter}
+              disabled={!isImageSelected}
+              className="flex items-center justify-center gap-2 w-full py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-lg transition-all font-bold text-xs"
+              title="Convert image to ASCII art"
             >
-              <Trash size={18} />
-              <span>Clear</span>
+              <Hash size={16} />
+              <span>ASCII Filter</span>
             </button>
-            <button
-              onClick={downloadImage}
-              disabled={elements.length === 0}
-              className="flex-1 flex justify-center items-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Download size={18} />
-              <span>Export</span>
-            </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-center">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Density</label>
+                <span className="text-[10px] font-mono text-indigo-500">{asciiCharSize}px</span>
+              </div>
+              <input
+                type="range"
+                min="4"
+                max="24"
+                step="1"
+                value={asciiCharSize}
+                onChange={(e) => setAsciiCharSize(parseInt(e.target.value))}
+                className="w-full accent-indigo-500"
+              />
+            </div>
+          </div>
+
+          {isImageSelected && selectedElement && (
+            <div className="flex flex-col gap-4 p-4 bg-black/5 dark:bg-white/5 rounded-2xl border border-black/5 dark:border-white/5">
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <SlidersHorizontal size={14} />
+                Filters
+              </div>
+              
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setElements(elements.map(el => el.id === selectedId ? { ...el, grayscale: !el.grayscale } : el))}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
+                      selectedElement.grayscale ? "bg-indigo-600 text-white border-indigo-600" : "bg-transparent text-slate-500 border-black/10 dark:border-white/10"
+                    )}
+                  >
+                    Grayscale
+                  </button>
+                  <button
+                    onClick={() => setElements(elements.map(el => el.id === selectedId ? { ...el, sepia: !el.sepia } : el))}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all border",
+                      selectedElement.sepia ? "bg-indigo-600 text-white border-indigo-600" : "bg-transparent text-slate-500 border-black/10 dark:border-white/10"
+                    )}
+                  >
+                    Sepia
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Brightness</label>
+                    <span className="text-[10px] font-mono text-indigo-500">{Math.round((selectedElement.brightness || 0) * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-1"
+                    max="1"
+                    step="0.05"
+                    value={selectedElement.brightness || 0}
+                    onChange={(e) => {
+                      setElements(elements.map(el => el.id === selectedId ? { ...el, brightness: parseFloat(e.target.value) } : el));
+                    }}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Contrast</label>
+                    <span className="text-[10px] font-mono text-indigo-500">{Math.round((selectedElement.contrast || 0))}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="-100"
+                    max="100"
+                    step="1"
+                    value={selectedElement.contrast || 0}
+                    onChange={(e) => {
+                      setElements(elements.map(el => el.id === selectedId ? { ...el, contrast: parseFloat(e.target.value) } : el));
+                    }}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
+
+          <button
+            onClick={deleteSelected}
+            disabled={!selectedId}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+          >
+            <Trash2 size={18} />
+            <span>Delete Selected</span>
+          </button>
+
+          <div className="mt-auto pt-4 flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button
+                onClick={saveProject}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all text-xs font-bold border border-black/5 dark:border-white/5"
+              >
+                <Save size={16} className="text-indigo-500" />
+                <span>Save</span>
+              </button>
+              <button
+                onClick={loadProject}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all text-xs font-bold border border-black/5 dark:border-white/5"
+              >
+                <FolderOpen size={16} className="text-indigo-500" />
+                <span>Load</span>
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={clearCanvas}
+                disabled={elements.length === 0}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white rounded-xl font-bold transition-all disabled:opacity-30 text-xs"
+              >
+                <Trash size={18} />
+                <span>Clear</span>
+              </button>
+              <button
+                onClick={downloadImage}
+                disabled={elements.length === 0}
+                className="flex-1 flex justify-center items-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold transition-all disabled:opacity-30 shadow-lg shadow-emerald-500/20 text-xs"
+              >
+                <Download size={18} />
+                <span>Export</span>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Canvas Area */}
-      <div className="flex-1 relative bg-slate-950/50" ref={containerRef}>
-        <div className="absolute inset-0 overflow-hidden flex items-center justify-center p-8">
-          <div className="bg-white shadow-2xl" style={{ width: 800, height: 600 }}>
+      <div className="flex-1 relative flex flex-col bg-slate-200/50 dark:bg-black/40 overflow-hidden" ref={containerRef}>
+        {/* Canvas Toolbar */}
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 glass-panel px-4 py-2 rounded-2xl flex items-center gap-4 shadow-xl">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setZoom(z => Math.max(0.2, z - 0.1))} className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all">
+              <ZoomOut size={18} />
+            </button>
+            <span className="text-xs font-mono w-12 text-center font-bold text-slate-500">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all">
+              <ZoomIn size={18} />
+            </button>
+          </div>
+          <div className="h-4 w-px bg-black/10 dark:bg-white/10" />
+          <button 
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-1.5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 rounded-lg transition-all"
+            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+          >
+            {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-hidden flex items-center justify-center p-4 md:p-8">
+          <div 
+            className="bg-white shadow-2xl transition-transform duration-300" 
+            style={{ 
+              width: 800, 
+              height: 600,
+              transform: `scale(${stageScale})`,
+              transformOrigin: 'center center'
+            }}
+          >
             <Stage
               width={800}
               height={600}
@@ -647,7 +706,6 @@ export const ImageEditor: React.FC = () => {
           onComplete={(croppedSrc, width, height) => {
             setElements(elements.map(el => {
               if (el.id === selectedId) {
-                // Determine new dimensions while keeping it within reasonable bounds
                 const maxWidth = 600;
                 const scale = width > maxWidth ? maxWidth / width : 1;
                 return { 
