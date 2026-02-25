@@ -1,0 +1,5 @@
+{
+  "name": "Remix: OmniEdit Studio",
+  "description": "A fully functional client-side all-in-one editor for images, PDFs, and videos with a reactive background.",
+  "requestFramePermissions": []
+}
