@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, ArrowRight, FileImage, FileText, Download, RefreshCw, Eye, Settings2, Trash, FileType, ZoomIn, ZoomOut, Maximize2, Minimize2, FileCode } from 'lucide-react';
+import { Upload, ArrowRight, FileImage, FileText, Download, RefreshCw, Eye, Settings2, Trash, FileType, ZoomIn, ZoomOut, Maximize2, Minimize2, FileCode, FolderOpen } from 'lucide-react';
 import { cn } from '../utils';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -54,6 +54,15 @@ const PdfPreview = ({ file }: { file: File }) => {
       )}
     </div>
   );
+};
+
+const sanitizeForPdf = (text: string): string => {
+  const winAnsiMap: Record<string, string> = {
+    '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+    '™': '(TM)', '©': '(C)', '®': '(R)', '…': '...', '–': '-', '—': '-', '‘': "'", '’': "'", '“': '"', '”': '"'
+  };
+  return text.split('').map(char => winAnsiMap[char] || (char.charCodeAt(0) > 255 ? '?' : char)).join('');
 };
 
 export const Converter: React.FC = () => {
@@ -284,7 +293,7 @@ export const Converter: React.FC = () => {
         pdfDoc.addPage();
         y = height - margin;
       }
-      page.drawText(line, {
+      page.drawText(sanitizeForPdf(line), {
         x: margin,
         y,
         size: fontSize,
@@ -413,13 +422,30 @@ export const Converter: React.FC = () => {
       {/* Sidebar Dashboard */}
       {!isFullscreen && (
         <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-2">Dashboard</h2>
+          <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-4">Dashboard</h2>
           
-            <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
-              <Upload size={18} />
-              <span>Upload File</span>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs">
+              <Upload size={16} />
+              <span>Upload</span>
               <input type="file" className="hidden" onChange={handleFileUpload} accept="image/*,application/pdf,image/svg+xml,.docx" />
             </label>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*,application/pdf,image/svg+xml,.docx';
+                input.onchange = (e: any) => {
+                  handleFileUpload(e);
+                };
+                input.click();
+              }}
+              className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600/10 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all font-bold text-xs"
+            >
+              <FolderOpen size={16} />
+              <span>Load</span>
+            </button>
+          </div>
 
           <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
 
@@ -464,11 +490,11 @@ export const Converter: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-auto pt-4 flex flex-col gap-2">
+          <div className="mt-auto pt-4 flex flex-col gap-3">
             <button
               onClick={handleConvert}
               disabled={!file || isConverting}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs disabled:opacity-30"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-xl shadow-indigo-500/25 active:scale-95 font-bold text-xs disabled:opacity-30"
             >
               {isConverting ? <RefreshCw className="animate-spin" size={18} /> : <Download size={18} />}
               <span>{isConverting ? 'Processing...' : 'Convert & Download'}</span>
@@ -477,7 +503,7 @@ export const Converter: React.FC = () => {
             <button
               onClick={() => setFile(null)}
               disabled={!file || isConverting}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs border border-red-500/20"
             >
               <Trash size={18} />
               <span>Clear File</span>

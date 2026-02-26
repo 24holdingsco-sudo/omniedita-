@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Camera, Upload, Settings2, Download, Copy, RefreshCcw, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, Trash, Hash } from 'lucide-react';
+import { Camera, Upload, Settings2, Download, Copy, RefreshCcw, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, Trash, Hash, FolderOpen } from 'lucide-react';
 import { cn } from '../utils';
 
 const ASCII_RAMP = "@#NW$M%&K*X01okxdcl{}[]()|/\\^<>+~:;,\"'. ";
@@ -252,7 +252,7 @@ export const AsciiStudio: React.FC = () => {
       {/* Sidebar Dashboard */}
       {!isFullscreen && (
         <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-2">Dashboard</h2>
+          <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-4">Dashboard</h2>
           
           <button
             onClick={startCamera}
@@ -262,11 +262,28 @@ export const AsciiStudio: React.FC = () => {
             <span>Start Camera</span>
           </button>
 
-          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
-            <Upload size={18} />
-            <span>Upload Media</span>
-            <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs">
+              <Upload size={16} />
+              <span>Upload</span>
+              <input type="file" accept="image/*,video/*" className="hidden" onChange={handleFileUpload} />
+            </label>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*,video/*';
+                input.onchange = (e: any) => {
+                  handleFileUpload(e);
+                };
+                input.click();
+              }}
+              className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600/10 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all font-bold text-xs"
+            >
+              <FolderOpen size={16} />
+              <span>Load</span>
+            </button>
+          </div>
 
           <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
 
@@ -331,7 +348,7 @@ export const AsciiStudio: React.FC = () => {
             </div>
           </div>
 
-          <div className="mt-auto pt-4 flex flex-col gap-2">
+          <div className="mt-auto pt-4 flex flex-col gap-3">
             {(isPlaying || imgRef.current?.src) && (
               <>
                 <button
@@ -343,7 +360,7 @@ export const AsciiStudio: React.FC = () => {
                 </button>
                 <button
                   onClick={handleDownloadHtml}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs"
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-xl shadow-indigo-500/25 active:scale-95 font-bold text-xs"
                 >
                   <Download size={16} />
                   <span>Save as HTML</span>
@@ -366,7 +383,7 @@ export const AsciiStudio: React.FC = () => {
                 if (outputRef.current) outputRef.current.innerHTML = '';
               }}
               disabled={!isPlaying && !imgRef.current?.src}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs border border-red-500/20"
             >
               <Trash2 size={18} />
               <span>Clear Media</span>

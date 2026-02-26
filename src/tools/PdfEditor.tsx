@@ -1,12 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { FileText, Plus, Download, Trash2, Merge, Upload, Eye, FileType, Image as ImageIcon, ScanText, RefreshCw, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Minimize2, List, Edit3, Save } from 'lucide-react';
+import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { FileText, Plus, Download, Trash2, Merge, Upload, Eye, FileType, Image as ImageIcon, RefreshCw, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Minimize2, List, Edit3, Save, RotateCw, FolderOpen } from 'lucide-react';
 import { cn } from '../utils';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
-import Tesseract from 'tesseract.js';
 import { useHistory } from '../hooks/useHistory';
 
 // Set worker path for pdf.js
@@ -216,6 +215,15 @@ const PdfPreview = ({ file, onUpdateContent }: { file: DocFile, onUpdateContent?
   );
 };
 
+const sanitizeForPdf = (text: string): string => {
+  const winAnsiMap: Record<string, string> = {
+    '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+    '™': '(TM)', '©': '(C)', '®': '(R)', '…': '...', '–': '-', '—': '-', '‘': "'", '’': "'", '“': '"', '”': '"'
+  };
+  return text.split('').map(char => winAnsiMap[char] || (char.charCodeAt(0) > 255 ? '?' : char)).join('');
+};
+
 export const PdfEditor: React.FC = () => {
   const { state: files, set: setFiles, undo, redo, canUndo, canRedo } = useHistory<DocFile[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -330,7 +338,7 @@ export const PdfEditor: React.FC = () => {
           pdfDoc.addPage();
           y = height - margin;
         }
-        page.drawText(line, {
+        page.drawText(sanitizeForPdf(line), {
           x: margin,
           y,
           size: fontSize,
@@ -430,57 +438,34 @@ export const PdfEditor: React.FC = () => {
     }
   };
 
-  const performOcrOnPdf = async (docFile: DocFile) => {
+  const rotatePdf = async (docFile: DocFile) => {
     if (docFile.type !== 'pdf') return;
     setIsProcessing(true);
-    setProcessingStatus('Initializing OCR...');
+    setProcessingStatus('Rotating PDF...');
 
     try {
       const arrayBuffer = await docFile.file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      
-      let fullText = '';
-      
-      for (let i = 1; i <= pdf.numPages; i++) {
-        setProcessingStatus(`Running OCR on page ${i} of ${pdf.numPages}...`);
-        const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better OCR
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        if (!ctx) continue;
-        
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        
-        await page.render({ canvasContext: ctx, viewport } as any).promise;
-        
-        const dataUrl = canvas.toDataURL('image/png');
-        
-        const result = await Tesseract.recognize(dataUrl, 'eng', {
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              setProcessingStatus(`OCR Page ${i}: ${Math.round(m.progress * 100)}%`);
-            }
-          }
-        });
-        
-        fullText += result.data.text + '\n\n';
-      }
+      const pdf = await PDFDocument.load(arrayBuffer);
+      const pages = pdf.getPages();
+      pages.forEach(page => {
+        const rotation = page.getRotation().angle;
+        page.setRotation(degrees((rotation + 90) % 360));
+      });
 
-      const blob = new Blob([fullText], { type: 'text/plain' });
+      const pdfBytes = await pdf.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${docFile.name.replace('.pdf', '')}-ocr.txt`;
+      link.download = `${docFile.name.replace('.pdf', '')}-rotated.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error performing OCR:', error);
-      alert('Failed to perform OCR on PDF.');
+      console.error('Error rotating PDF:', error);
+      alert('Failed to rotate PDF.');
     } finally {
       setIsProcessing(false);
       setProcessingStatus('');
@@ -537,26 +522,13 @@ export const PdfEditor: React.FC = () => {
     <div className="flex flex-col lg:flex-row h-full overflow-hidden">
       {/* Sidebar Dashboard */}
       <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Dashboard</h2>
-          <div className="flex gap-1">
-            <button
-              onClick={() => {
-                if (window.confirm('Clear all files?')) {
-                  setFiles([]);
-                  setSelectedId(null);
-                }
-              }}
-              disabled={files.length === 0}
-              className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 disabled:opacity-30 transition-colors"
-              title="Clear All"
-            >
-              <Trash2 size={16} />
-            </button>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Dashboard</h2>
+          <div className="flex gap-2">
             <button
               onClick={undo}
               disabled={!canUndo}
-              className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+              className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-30 transition-all active:scale-90"
               title="Undo"
             >
               <Undo2 size={16} />
@@ -564,12 +536,40 @@ export const PdfEditor: React.FC = () => {
             <button
               onClick={redo}
               disabled={!canRedo}
-              className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+              className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-30 transition-all active:scale-90"
               title="Redo"
             >
               <Redo2 size={16} />
             </button>
           </div>
+        </div>
+        
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs">
+            <Plus size={16} />
+            <span>Add File</span>
+            <input type="file" accept="application/pdf,text/plain" multiple className="hidden" onChange={(e) => {
+              const files = Array.from(e.target.files || []);
+              if (files.length > 0) onDrop(files);
+            }} />
+          </label>
+          <button
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'application/pdf,text/plain';
+              input.multiple = true;
+              input.onchange = (e: any) => {
+                const files = Array.from(e.target.files || []);
+                if (files.length > 0) onDrop(files as File[]);
+              };
+              input.click();
+            }}
+            className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600/10 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all font-bold text-xs"
+          >
+            <FolderOpen size={16} />
+            <span>Load</span>
+          </button>
         </div>
         
         <div
@@ -637,13 +637,13 @@ export const PdfEditor: React.FC = () => {
                     Extract
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); performOcrOnPdf(file); }}
+                    onClick={(e) => { e.stopPropagation(); rotatePdf(file); }}
                     disabled={isProcessing}
                     className="flex items-center justify-center gap-2 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-600 hover:text-white text-[10px] font-bold rounded-lg transition-all"
-                    title="Use OCR for scanned PDFs"
+                    title="Rotate all pages 90 degrees"
                   >
-                    <ScanText size={14} />
-                    OCR
+                    <RotateCw size={14} />
+                    Rotate
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); convertPdfToImages(file); }}
@@ -659,18 +659,30 @@ export const PdfEditor: React.FC = () => {
           ))}
         </div>
 
-        {files.filter(f => f.type === 'pdf').length > 1 && (
-          <div className="mt-auto pt-4 border-t border-black/5 dark:border-white/5">
+        <div className="mt-auto pt-4 border-t border-black/5 dark:border-white/5 flex flex-col gap-3">
+          {files.filter(f => f.type === 'pdf').length > 1 && (
             <button
               onClick={mergePdfs}
               disabled={isProcessing}
-              className="w-full flex justify-center items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+              className="w-full flex justify-center items-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl font-bold transition-all shadow-xl shadow-indigo-500/25 active:scale-95 disabled:opacity-50"
             >
               <Merge size={18} />
               <span>Merge All PDFs</span>
             </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={() => {
+              if (window.confirm('Clear all files?')) {
+                setFiles([]);
+                setSelectedId(null);
+              }
+            }}
+            className="w-full flex justify-center items-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl font-bold transition-all active:scale-95 border border-red-500/20"
+          >
+            <Trash2 size={18} />
+            <span>Clear All</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Preview Area */}

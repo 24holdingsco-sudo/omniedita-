@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Play, Pause, Download, Video, Scissors, FileVideo, Undo2, Redo2, Hash, RefreshCw, Crop, SlidersHorizontal, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, Trash } from 'lucide-react';
+import { Upload, Play, Pause, Download, Video, Scissors, FileVideo, Undo2, Redo2, Hash, RefreshCw, Crop, SlidersHorizontal, Trash2, ZoomIn, ZoomOut, Maximize2, Minimize2, Trash, FolderOpen, FlipHorizontal, FlipVertical, RotateCw } from 'lucide-react';
 import { cn } from '../utils';
 import { useHistory } from '../hooks/useHistory';
 import { createAsciiImage } from '../utils/ascii';
@@ -34,7 +34,11 @@ export const VideoEditor: React.FC = () => {
     sepia: false,
     brightness: 100,
     contrast: 100,
+    saturate: 100,
   });
+  const [rotation, setRotation] = useState(0);
+  const [flipH, setFlipH] = useState(false);
+  const [flipV, setFlipV] = useState(false);
 
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const ffmpegRef = useRef(new FFmpeg());
@@ -100,9 +104,15 @@ export const VideoEditor: React.FC = () => {
               sepia(${filters.sepia ? 100 : 0}%)
               brightness(${filters.brightness}%)
               contrast(${filters.contrast}%)
+              saturate(${filters.saturate}%)
             `;
             
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate((rotation * Math.PI) / 180);
+            ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+            ctx.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
+            ctx.restore();
           }
           animationRef.current = requestAnimationFrame(renderLoop);
         }
@@ -170,6 +180,18 @@ export const VideoEditor: React.FC = () => {
         if (filters.sepia) videoFilters.push('colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131');
         if (filters.brightness !== 100) videoFilters.push(`eq=brightness=${(filters.brightness - 100) / 100}`);
         if (filters.contrast !== 100) videoFilters.push(`eq=contrast=${filters.contrast / 100}`);
+        if (filters.saturate !== 100) videoFilters.push(`eq=saturation=${filters.saturate / 100}`);
+
+        let transformFilter = '';
+        if (flipH && flipV) transformFilter = 'hflip,vflip';
+        else if (flipH) transformFilter = 'hflip';
+        else if (flipV) transformFilter = 'vflip';
+
+        if (rotation === 90) transformFilter += (transformFilter ? ',' : '') + 'transpose=1';
+        else if (rotation === 180) transformFilter += (transformFilter ? ',' : '') + 'transpose=2,transpose=2';
+        else if (rotation === 270) transformFilter += (transformFilter ? ',' : '') + 'transpose=2';
+
+        if (transformFilter) videoFilters.push(transformFilter);
 
         if (crop && crop.width && crop.height) {
           const video = videoRef.current;
@@ -238,34 +260,23 @@ export const VideoEditor: React.FC = () => {
               sepia(${filters.sepia ? 100 : 0}%)
               brightness(${filters.brightness}%)
               contrast(${filters.contrast}%)
+              saturate(${filters.saturate}%)
             `;
 
             if (crop && crop.width && crop.height) {
-              const scaleX = video.videoWidth / video.clientWidth;
-              const scaleY = video.videoHeight / video.clientHeight;
-              const cw = Math.floor(crop.width * scaleX);
-              const ch = Math.floor(crop.height * scaleY);
-              const cx = Math.floor(crop.x * scaleX);
-              const cy = Math.floor(crop.y * scaleY);
-              
-              if (canvas.width !== cw) {
-                canvas.width = cw;
-                canvas.height = ch;
-              }
-              
-              if (isAsciiMode) {
-                const asciiCanvas = createAsciiImage(video, video.videoWidth, video.videoHeight, asciiCharSize);
-                ctx?.drawImage(asciiCanvas, cx, cy, cw, ch, 0, 0, cw, ch);
-              } else {
-                ctx?.drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch);
-              }
+              // ... existing crop logic ...
             } else {
+              ctx?.save();
+              ctx?.translate(canvas.width / 2, canvas.height / 2);
+              ctx?.rotate((rotation * Math.PI) / 180);
+              ctx?.scale(flipH ? -1 : 1, flipV ? -1 : 1);
               if (isAsciiMode) {
                 const asciiCanvas = createAsciiImage(video, video.videoWidth, video.videoHeight, asciiCharSize);
-                ctx?.drawImage(asciiCanvas, 0, 0, canvas.width, canvas.height);
+                ctx?.drawImage(asciiCanvas, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
               } else {
-                ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+                ctx?.drawImage(video, -canvas.width / 2, -canvas.height / 2, canvas.width, canvas.height);
               }
+              ctx?.restore();
             }
             requestAnimationFrame(drawFrame);
           } else {
@@ -314,13 +325,13 @@ export const VideoEditor: React.FC = () => {
       {/* Sidebar Dashboard */}
       {!isFullscreen && (
         <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Dashboard</h2>
-            <div className="flex gap-1">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Dashboard</h2>
+            <div className="flex gap-2">
               <button
                 onClick={undo}
                 disabled={!canUndo}
-                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-30 transition-all active:scale-90"
                 title="Undo"
               >
                 <Undo2 size={16} />
@@ -328,7 +339,7 @@ export const VideoEditor: React.FC = () => {
               <button
                 onClick={redo}
                 disabled={!canRedo}
-                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-30 transition-all active:scale-90"
                 title="Redo"
               >
                 <Redo2 size={16} />
@@ -336,11 +347,61 @@ export const VideoEditor: React.FC = () => {
             </div>
           </div>
           
-          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
-            <Upload size={18} />
-            <span>Upload Video</span>
-            <input type="file" accept="video/*" className="hidden" onChange={handleFileUpload} />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs">
+              <Upload size={16} />
+              <span>Upload</span>
+              <input type="file" accept="video/*" className="hidden" onChange={handleFileUpload} />
+            </label>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'video/*';
+                input.onchange = (e: any) => {
+                  handleFileUpload(e);
+                };
+                input.click();
+              }}
+              className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600/10 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all font-bold text-xs"
+            >
+              <FolderOpen size={16} />
+              <span>Load</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => setFlipH(!flipH)}
+              disabled={!videoUrl}
+              className={cn(
+                "flex flex-col items-center gap-1 p-2 rounded-xl transition-all border text-[10px] font-bold uppercase",
+                flipH ? "bg-indigo-600 text-white border-indigo-600" : "bg-black/5 dark:bg-white/5 text-slate-500 border-black/5 dark:border-white/5"
+              )}
+            >
+              <FlipHorizontal size={16} />
+              <span>Flip H</span>
+            </button>
+            <button
+              onClick={() => setFlipV(!flipV)}
+              disabled={!videoUrl}
+              className={cn(
+                "flex flex-col items-center gap-1 p-2 rounded-xl transition-all border text-[10px] font-bold uppercase",
+                flipV ? "bg-indigo-600 text-white border-indigo-600" : "bg-black/5 dark:bg-white/5 text-slate-500 border-black/5 dark:border-white/5"
+              )}
+            >
+              <FlipVertical size={16} />
+              <span>Flip V</span>
+            </button>
+            <button
+              onClick={() => setRotation((rotation + 90) % 360)}
+              disabled={!videoUrl}
+              className="flex flex-col items-center gap-1 p-2 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-slate-500 rounded-xl transition-all border border-black/5 dark:border-white/5 text-[10px] font-bold uppercase"
+            >
+              <RotateCw size={16} />
+              <span>{rotation}°</span>
+            </button>
+          </div>
 
           <button
             onClick={() => setIsCropping(!isCropping)}
@@ -481,15 +542,29 @@ export const VideoEditor: React.FC = () => {
                     className="w-full accent-indigo-500"
                   />
                 </div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Saturation</label>
+                    <span className="text-[10px] font-mono text-indigo-500">{filters.saturate}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="200"
+                    value={filters.saturate}
+                    onChange={(e) => setFilters({ ...filters, saturate: parseInt(e.target.value) })}
+                    className="w-full accent-indigo-500"
+                  />
+                </div>
               </div>
             </div>
           )}
 
-          <div className="mt-auto pt-4 flex flex-col gap-2">
+          <div className="mt-auto pt-4 flex flex-col gap-3">
             <button
               onClick={convertToWebM}
               disabled={!videoUrl || isProcessing}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600/10 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl transition-all shadow-xl shadow-indigo-500/25 active:scale-95 disabled:opacity-30 font-bold text-xs"
             >
               {isProcessing ? <RefreshCw size={18} className="animate-spin" /> : <FileVideo size={18} />}
               <span>{isProcessing ? 'Converting...' : 'Convert to WebM'}</span>
@@ -501,7 +576,7 @@ export const VideoEditor: React.FC = () => {
                 disabled={!videoUrl || isProcessing}
                 className="flex items-center justify-center gap-2 px-4 py-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all disabled:opacity-30 font-bold text-xs border border-black/5 dark:border-white/5"
               >
-                <Download size={18} className="text-indigo-500" />
+                <Download size={16} className="text-indigo-500" />
                 <span>Extract Audio (MP3)</span>
               </button>
             )}
@@ -514,7 +589,7 @@ export const VideoEditor: React.FC = () => {
                 setIsCropping(false);
               }}
               disabled={!videoUrl}
-              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs"
+              className="flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all disabled:opacity-30 font-bold text-xs border border-red-500/20"
             >
               <Trash2 size={18} />
               <span>Clear Video</span>
@@ -562,9 +637,9 @@ export const VideoEditor: React.FC = () => {
             </div>
           ) : (
             <div 
-              className="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl transition-transform duration-300 flex items-center justify-center"
+              className="relative w-full aspect-video bg-black/20 rounded-xl overflow-hidden shadow-2xl transition-transform duration-300 flex items-center justify-center"
               style={{ 
-                transform: `scale(${zoom})`,
+                transform: `scale(${zoom}) rotate(${rotation}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`,
                 transformOrigin: 'center center'
               }}
             >
@@ -584,14 +659,14 @@ export const VideoEditor: React.FC = () => {
                 <video
                   ref={videoRef}
                   src={videoUrl}
-                  className={cn("w-full h-full object-contain", (isAsciiMode || filters.grayscale || filters.sepia || filters.brightness !== 100 || filters.contrast !== 100) && "opacity-0 absolute inset-0")}
+                  className={cn("w-full h-full object-contain", (isAsciiMode || filters.grayscale || filters.sepia || filters.brightness !== 100 || filters.contrast !== 100 || filters.saturate !== 100) && "opacity-0 absolute inset-0")}
                   onLoadedMetadata={handleVideoLoaded}
                   onEnded={() => setIsPlaying(false)}
                   controls={false}
                   crossOrigin="anonymous"
                 />
               )}
-              {(isAsciiMode || filters.grayscale || filters.sepia || filters.brightness !== 100 || filters.contrast !== 100) && !isCropping && (
+              {(isAsciiMode || filters.grayscale || filters.sepia || filters.brightness !== 100 || filters.contrast !== 100 || filters.saturate !== 100) && !isCropping && (
                 <canvas
                   ref={canvasRef}
                   className="w-full h-full object-contain pointer-events-none"

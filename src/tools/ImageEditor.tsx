@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Image as KonvaImage, Text, Transformer } from 'react-konva';
 import useImage from 'use-image';
-import { Upload, Download, Type, Image as ImageIcon, RotateCw, Crop, Trash2, Scissors, RefreshCw, SlidersHorizontal, X, Save, FolderOpen, Undo2, Redo2, Hash, Trash, ZoomIn, ZoomOut, Maximize2, Minimize2, Settings2 } from 'lucide-react';
+import { Upload, Download, Type, Image as ImageIcon, RotateCw, Crop, Trash2, RefreshCw, SlidersHorizontal, X, Save, FolderOpen, Undo2, Redo2, Hash, Trash, ZoomIn, ZoomOut, Maximize2, Minimize2, Settings2, FlipHorizontal, FlipVertical } from 'lucide-react';
 import { cn } from '../utils';
-import { removeBackground } from '@imgly/background-removal';
 import Konva from 'konva';
 import ReactCrop, { type Crop as CropType, type PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -226,7 +225,6 @@ export const ImageEditor: React.FC = () => {
   const stageRef = useRef<any>(null);
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isRemovingBg, setIsRemovingBg] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -304,29 +302,24 @@ export const ImageEditor: React.FC = () => {
     }
   };
 
-  const handleRemoveBackground = async () => {
+  const flipHorizontal = () => {
     if (!selectedId) return;
-    
-    const selectedElement = elements.find(el => el.id === selectedId);
-    if (!selectedElement || selectedElement.type !== 'image' || !selectedElement.src) return;
+    setElements(elements.map(el => {
+      if (el.id === selectedId) {
+        return { ...el, scaleX: (el.scaleX || 1) * -1 };
+      }
+      return el;
+    }));
+  };
 
-    setIsRemovingBg(true);
-    try {
-      const blob = await removeBackground(selectedElement.src);
-      const url = URL.createObjectURL(blob);
-      
-      setElements(elements.map(el => {
-        if (el.id === selectedId) {
-          return { ...el, src: url };
-        }
-        return el;
-      }));
-    } catch (error) {
-      console.error('Error removing background:', error);
-      alert('Failed to remove background. Please try again.');
-    } finally {
-      setIsRemovingBg(false);
-    }
+  const flipVertical = () => {
+    if (!selectedId) return;
+    setElements(elements.map(el => {
+      if (el.id === selectedId) {
+        return { ...el, scaleY: (el.scaleY || 1) * -1 };
+      }
+      return el;
+    }));
   };
 
   const [asciiCharSize, setAsciiCharSize] = useState(12);
@@ -416,13 +409,13 @@ export const ImageEditor: React.FC = () => {
       {/* Sidebar Dashboard */}
       {!isFullscreen && (
         <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400">Dashboard</h2>
-            <div className="flex gap-1">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Dashboard</h2>
+            <div className="flex gap-2">
               <button
                 onClick={undo}
                 disabled={!canUndo}
-                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-30 transition-all active:scale-90"
                 title="Undo"
               >
                 <Undo2 size={16} />
@@ -430,7 +423,7 @@ export const ImageEditor: React.FC = () => {
               <button
                 onClick={redo}
                 disabled={!canRedo}
-                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/5 text-slate-500 hover:text-indigo-500 disabled:opacity-30 transition-colors"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-white/5 text-slate-500 hover:text-indigo-500 hover:bg-indigo-500/10 disabled:opacity-30 transition-all active:scale-90"
                 title="Redo"
               >
                 <Redo2 size={16} />
@@ -438,11 +431,28 @@ export const ImageEditor: React.FC = () => {
             </div>
           </div>
           
-          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
-            <Upload size={18} />
-            <span>Upload Image</span>
-            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold text-xs">
+              <Upload size={16} />
+              <span>Upload</span>
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            </label>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = (e: any) => {
+                  handleImageUpload(e);
+                };
+                input.click();
+              }}
+              className="flex items-center justify-center gap-2 px-3 py-3 bg-indigo-600/10 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-xl transition-all font-bold text-xs"
+            >
+              <FolderOpen size={16} />
+              <span>Load Image</span>
+            </button>
+          </div>
 
           <button
             onClick={addText}
@@ -456,49 +466,60 @@ export const ImageEditor: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => setIsCropping(true)}
+              onClick={flipHorizontal}
               disabled={!isImageSelected}
               className="flex flex-col items-center gap-2 p-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all border border-black/5 dark:border-white/5 disabled:opacity-30"
             >
-              <Crop size={20} className="text-indigo-500" />
-              <span className="text-[10px] font-bold uppercase tracking-wider">Crop</span>
+              <FlipHorizontal size={20} className="text-indigo-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Flip H</span>
             </button>
 
             <button
-              onClick={handleRemoveBackground}
-              disabled={!isImageSelected || isRemovingBg}
+              onClick={flipVertical}
+              disabled={!isImageSelected}
               className="flex flex-col items-center gap-2 p-3 bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 rounded-xl transition-all border border-black/5 dark:border-white/5 disabled:opacity-30"
             >
-              {isRemovingBg ? <RefreshCw size={20} className="animate-spin text-indigo-500" /> : <Scissors size={20} className="text-indigo-500" />}
-              <span className="text-[10px] font-bold uppercase tracking-wider">Remove BG</span>
+              <FlipVertical size={20} className="text-indigo-500" />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Flip V</span>
             </button>
           </div>
 
-          <div className="flex flex-col gap-3 p-4 bg-black/5 dark:bg-white/5 rounded-2xl border border-black/5 dark:border-white/5">
+          <div className="grid grid-cols-1 gap-2 mt-2">
             <button
-              onClick={applyAsciiFilter}
+              onClick={() => setIsCropping(true)}
               disabled={!isImageSelected}
-              className="flex items-center justify-center gap-2 w-full py-2 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-lg transition-all font-bold text-xs"
-              title="Convert image to ASCII art"
+              className="flex items-center justify-center gap-2 w-full py-3 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl transition-all border border-indigo-500/20 disabled:opacity-30 font-bold text-xs"
             >
-              <Hash size={16} />
-              <span>ASCII Filter</span>
+              <Crop size={18} />
+              <span>Crop Image</span>
             </button>
-            <div className="flex flex-col gap-2">
-              <div className="flex justify-between items-center">
+          </div>
+
+          <div className="flex flex-col gap-4 p-4 bg-indigo-500/5 dark:bg-indigo-500/10 rounded-2xl border border-indigo-500/10">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={applyAsciiFilter}
+                disabled={!isImageSelected}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg transition-all font-bold text-xs shadow-lg shadow-indigo-500/20 active:scale-95 disabled:opacity-30"
+                title="Convert image to ASCII art"
+              >
+                <Hash size={16} />
+                <span>ASCII Filter</span>
+              </button>
+              <div className="flex flex-col items-end">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Density</label>
-                <span className="text-[10px] font-mono text-indigo-500">{asciiCharSize}px</span>
+                <span className="text-[10px] font-mono text-indigo-500 font-bold">{asciiCharSize}px</span>
               </div>
-              <input
-                type="range"
-                min="4"
-                max="24"
-                step="1"
-                value={asciiCharSize}
-                onChange={(e) => setAsciiCharSize(parseInt(e.target.value))}
-                className="w-full accent-indigo-500"
-              />
             </div>
+            <input
+              type="range"
+              min="4"
+              max="24"
+              step="1"
+              value={asciiCharSize}
+              onChange={(e) => setAsciiCharSize(parseInt(e.target.value))}
+              className="w-full accent-indigo-500"
+            />
           </div>
 
           {isImageSelected && selectedElement && (

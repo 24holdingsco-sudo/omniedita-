@@ -51,7 +51,13 @@ export const Background: React.FC = () => {
         this.vy = (Math.random() - 0.5) * 0.5;
         this.baseRadius = Math.random() * 1.5 + 0.5;
         this.radius = this.baseRadius;
-        const colors = ['rgba(99, 102, 241, 0.3)', 'rgba(167, 139, 250, 0.3)', 'rgba(236, 72, 153, 0.3)'];
+        const colors = [
+          'rgba(99, 102, 241, 0.4)', // Indigo
+          'rgba(167, 139, 250, 0.4)', // Violet
+          'rgba(236, 72, 153, 0.4)', // Pink
+          'rgba(52, 211, 153, 0.4)',  // Emerald
+          'rgba(251, 191, 36, 0.4)'   // Amber
+        ];
         this.color = colors[Math.floor(Math.random() * colors.length)];
       }
 
@@ -166,7 +172,7 @@ export const Background: React.FC = () => {
       {/* Background Settings Widget */}
       <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-2">
         {showSettings && (
-            <div className="bg-slate-900/60 backdrop-blur-2xl p-4 rounded-2xl border border-white/10 shadow-2xl flex flex-col gap-4 w-64 animate-in fade-in slide-in-from-bottom-4">
+            <div className="bg-white/10 dark:bg-slate-900/40 backdrop-blur-2xl p-4 rounded-2xl border border-black/5 dark:border-white/10 shadow-2xl flex flex-col gap-4 w-64 animate-in fade-in slide-in-from-bottom-4">
             <div className="text-sm font-bold text-white flex items-center gap-2">
               <div className="p-1.5 rounded-lg bg-indigo-500/20">
                 <Settings2 size={16} className="text-indigo-400" />
