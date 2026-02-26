@@ -5,14 +5,15 @@ import { PdfEditor } from './tools/PdfEditor';
 import { VideoEditor } from './tools/VideoEditor';
 import { Converter } from './tools/Converter';
 import { AsciiStudio } from './tools/AsciiStudio';
-import { Image, FileText, Video, RefreshCw, Layers, Hash, Sun, Moon, Eye, Menu, X } from 'lucide-react';
+import { Home } from './tools/Home';
+import { Image, FileText, Video, RefreshCw, Layers, Hash, Sun, Moon, Eye, Menu, X, Sparkles } from 'lucide-react';
 import { cn } from './utils';
 
-type Tool = 'image' | 'pdf' | 'video' | 'converter' | 'ascii';
+type Tool = 'home' | 'image' | 'pdf' | 'video' | 'converter' | 'ascii';
 type Theme = 'light' | 'dark' | 'eye-protection';
 
 export default function App() {
-  const [activeTool, setActiveTool] = useState<Tool>('image');
+  const [activeTool, setActiveTool] = useState<Tool>('home');
   const [theme, setTheme] = useState<Theme>('dark');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -41,14 +42,19 @@ export default function App() {
       <Background />
       
       {/* Top Navigation Bar */}
-      <header className="fixed top-0 left-0 right-0 h-16 glass-panel z-50 flex items-center justify-between px-4 md:px-8 shadow-lg">
-        <div className="flex items-center gap-3 text-indigo-500">
-          <Layers className="w-8 h-8 flex-shrink-0" />
-          <span className="text-xl font-bold tracking-tight hidden sm:block">OmniEdit</span>
+      <header className="fixed top-0 left-0 right-0 h-20 glass-panel z-50 flex items-center justify-between px-4 md:px-12 border-b border-black/5 dark:border-white/5">
+        <div 
+          className="flex items-center gap-3 text-indigo-500 cursor-pointer group"
+          onClick={() => setActiveTool('home')}
+        >
+          <div className="p-2 rounded-xl bg-indigo-500/10 group-hover:bg-indigo-500 group-hover:text-white transition-all duration-500">
+            <Layers className="w-6 h-6 flex-shrink-0" />
+          </div>
+          <span className="text-xl font-display font-bold tracking-tight hidden sm:block">OmniEdit</span>
         </div>
 
-        {/* Desktop Tool Navigation */}
-        <nav className="hidden lg:flex items-center gap-1">
+        {/* Desktop Tool Navigation - Centered */}
+        <nav className="hidden lg:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
           {tools.map((tool) => {
             const Icon = tool.icon;
             const isActive = activeTool === tool.id;
@@ -57,22 +63,21 @@ export default function App() {
                 key={tool.id}
                 onClick={() => setActiveTool(tool.id)}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-xl transition-all duration-300",
+                  "flex items-center gap-2 px-4 py-2 rounded-xl transition-all duration-500",
                   isActive 
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" 
-                    : "text-slate-500 hover:bg-indigo-500/10 hover:text-indigo-500"
+                    ? "text-indigo-500 font-bold" 
+                    : "text-slate-500 hover:text-indigo-500"
                 )}
               >
-                <Icon className="w-4 h-4" />
                 <span className="text-sm font-medium">{tool.name}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           {/* Theme Switcher */}
-          <div className="flex bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/5 dark:border-white/5">
+          <div className="hidden md:flex bg-black/5 dark:bg-white/5 p-1 rounded-xl border border-black/5 dark:border-white/5">
             {themes.map((t) => {
               const Icon = t.icon;
               const isActive = theme === t.id;
@@ -93,6 +98,14 @@ export default function App() {
               );
             })}
           </div>
+
+          <button 
+            onClick={() => setActiveTool('image')}
+            className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-95"
+          >
+            <Sparkles size={16} />
+            Launch Studio
+          </button>
 
           {/* Mobile Menu Toggle */}
           <button 
@@ -136,8 +149,9 @@ export default function App() {
       )}
 
       {/* Main Content Area */}
-      <main className="pt-16 h-screen flex flex-col overflow-hidden">
+      <main className="pt-20 h-screen flex flex-col overflow-hidden">
         <div className="flex-1 relative overflow-hidden">
+          {activeTool === 'home' && <Home onSelectTool={setActiveTool} />}
           {activeTool === 'image' && <ImageEditor />}
           {activeTool === 'pdf' && <PdfEditor />}
           {activeTool === 'video' && <VideoEditor />}

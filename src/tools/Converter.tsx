@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, ArrowRight, FileImage, FileText, Download, RefreshCw, Eye, Settings2, Trash, FileType, ZoomIn, ZoomOut, Maximize2, Minimize2 } from 'lucide-react';
+import { Upload, ArrowRight, FileImage, FileText, Download, RefreshCw, Eye, Settings2, Trash, FileType, ZoomIn, ZoomOut, Maximize2, Minimize2, FileCode } from 'lucide-react';
 import { cn } from '../utils';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
+import { Document, Packer, Paragraph, TextRun } from 'docx';
+import mammoth from 'mammoth';
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 
@@ -69,7 +71,9 @@ export const Converter: React.FC = () => {
       setFileUrl(url);
       
       if (file.type === 'application/pdf') {
-        setTargetFormat('png');
+        setTargetFormat('docx');
+      } else if (file.name.endsWith('.docx')) {
+        setTargetFormat('pdf');
       } else if (file.type.startsWith('image/') || file.type === 'image/svg+xml') {
         setTargetFormat('pdf');
       }
@@ -227,6 +231,73 @@ export const Converter: React.FC = () => {
     return blobs;
   };
 
+  const convertPdfToDocx = async (pdfFile: File): Promise<Blob> => {
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    const sections = [];
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const textItems = textContent.items.map((item: any) => item.str).join(' ');
+      
+      sections.push({
+        properties: {},
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: textItems,
+                size: 24,
+              }),
+            ],
+          }),
+        ],
+      });
+    }
+
+    const doc = new Document({
+      sections: sections,
+    });
+
+    return await Packer.toBlob(doc);
+  };
+
+  const convertDocxToPdf = async (docxFile: File): Promise<Blob> => {
+    const arrayBuffer = await docxFile.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    const text = result.value;
+
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const page = pdfDoc.addPage();
+    const { width, height } = page.getSize();
+    
+    const fontSize = 12;
+    const margin = 50;
+    let y = height - margin;
+    
+    const textLines = text.split('\n');
+    for (const line of textLines) {
+      if (y < margin) {
+        pdfDoc.addPage();
+        y = height - margin;
+      }
+      page.drawText(line, {
+        x: margin,
+        y,
+        size: fontSize,
+        font,
+        color: rgb(0, 0, 0),
+      });
+      y -= fontSize + 4;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    return new Blob([pdfBytes], { type: 'application/pdf' });
+  };
+
   const convertImageFormat = (imageFile: File, format: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -264,12 +335,32 @@ export const Converter: React.FC = () => {
 
     try {
       if (file.type === 'application/pdf') {
-        const blobs = await convertPdfToImage(file, targetFormat);
-        for (let i = 0; i < blobs.length; i++) {
-          const url = URL.createObjectURL(blobs[i]);
+        if (targetFormat === 'docx') {
+          const resultBlob = await convertPdfToDocx(file);
+          const url = URL.createObjectURL(resultBlob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `converted-page-${i + 1}-${Date.now()}.${targetFormat}`;
+          a.download = `converted-${Date.now()}.docx`;
+          a.click();
+          URL.revokeObjectURL(url);
+        } else {
+          const blobs = await convertPdfToImage(file, targetFormat);
+          for (let i = 0; i < blobs.length; i++) {
+            const url = URL.createObjectURL(blobs[i]);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `converted-page-${i + 1}-${Date.now()}.${targetFormat}`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }
+        }
+      } else if (file.name.endsWith('.docx')) {
+        if (targetFormat === 'pdf') {
+          const resultBlob = await convertDocxToPdf(file);
+          const url = URL.createObjectURL(resultBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `converted-${Date.now()}.pdf`;
           a.click();
           URL.revokeObjectURL(url);
         }
@@ -312,6 +403,7 @@ export const Converter: React.FC = () => {
 
   const isCompressible = targetFormat === 'jpeg' || targetFormat === 'webp' || targetFormat === 'pdf';
   const isPdfInput = file?.type === 'application/pdf';
+  const isDocxInput = file?.name.endsWith('.docx');
 
   return (
     <div className={cn(
@@ -323,11 +415,11 @@ export const Converter: React.FC = () => {
         <div className="w-full lg:w-80 glass-panel border-b lg:border-b-0 lg:border-r p-4 flex flex-col gap-4 overflow-y-auto max-h-[40vh] lg:max-h-full shrink-0">
           <h2 className="text-sm font-bold uppercase tracking-widest text-slate-400 mb-2">Dashboard</h2>
           
-          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
-            <Upload size={18} />
-            <span>Upload File</span>
-            <input type="file" className="hidden" onChange={handleFileUpload} accept="image/*,application/pdf,image/svg+xml" />
-          </label>
+            <label className="flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 text-white rounded-xl cursor-pointer transition-all shadow-lg shadow-indigo-500/20 active:scale-95 font-bold">
+              <Upload size={18} />
+              <span>Upload File</span>
+              <input type="file" className="hidden" onChange={handleFileUpload} accept="image/*,application/pdf,image/svg+xml,.docx" />
+            </label>
 
           <div className="h-px bg-black/5 dark:bg-white/5 my-2" />
 
@@ -347,7 +439,9 @@ export const Converter: React.FC = () => {
                 }}
                 className="w-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 text-slate-700 dark:text-white rounded-lg px-3 py-2 text-xs outline-none focus:border-indigo-500 transition-colors"
               >
-                {!isPdfInput && <option value="pdf">PDF Document</option>}
+                {isPdfInput && <option value="docx">Word Document (.docx)</option>}
+                {isDocxInput && <option value="pdf">PDF Document</option>}
+                {!isPdfInput && !isDocxInput && <option value="pdf">PDF Document</option>}
                 <option value="png">PNG Image</option>
                 <option value="jpeg">JPEG Image</option>
                 <option value="webp">WebP Image</option>
@@ -433,6 +527,12 @@ export const Converter: React.FC = () => {
             >
               {isPdfInput ? (
                 <PdfPreview file={file!} />
+              ) : isDocxInput ? (
+                <div className="flex flex-col items-center gap-4 text-slate-400">
+                  <FileCode className="w-24 h-24 opacity-20" />
+                  <p className="text-lg font-bold">Word Document Loaded</p>
+                  <p className="text-sm">{file?.name}</p>
+                </div>
               ) : (
                 <img src={fileUrl} alt="Preview" className="max-w-full max-h-full object-contain" />
               )}

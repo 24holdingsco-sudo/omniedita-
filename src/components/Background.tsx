@@ -42,23 +42,51 @@ export const Background: React.FC = () => {
       vy: number;
       radius: number;
       color: string;
+      baseRadius: number;
 
       constructor() {
         this.x = Math.random() * canvas!.width;
         this.y = Math.random() * canvas!.height;
-        this.vx = (Math.random() - 0.5) * 0.8;
-        this.vy = (Math.random() - 0.5) * 0.8;
-        this.radius = Math.random() * 2 + 0.5;
-        const colors = ['rgba(129, 140, 248, 0.4)', 'rgba(167, 139, 250, 0.4)', 'rgba(244, 114, 182, 0.4)', 'rgba(52, 211, 153, 0.4)', 'rgba(251, 191, 36, 0.4)'];
+        this.vx = (Math.random() - 0.5) * 0.5;
+        this.vy = (Math.random() - 0.5) * 0.5;
+        this.baseRadius = Math.random() * 1.5 + 0.5;
+        this.radius = this.baseRadius;
+        const colors = ['rgba(99, 102, 241, 0.3)', 'rgba(167, 139, 250, 0.3)', 'rgba(236, 72, 153, 0.3)'];
         this.color = colors[Math.floor(Math.random() * colors.length)];
       }
 
-      update() {
+      update(mouseX: number, mouseY: number) {
         this.x += this.vx;
         this.y += this.vy;
 
         if (this.x < 0 || this.x > canvas!.width) this.vx *= -1;
         if (this.y < 0 || this.y > canvas!.height) this.vy *= -1;
+
+        // Interaction
+        const dx = this.x - mouseX;
+        const dy = this.y - mouseY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        if (dist < 200) {
+          const force = (200 - dist) / 200;
+          const currentMode = modeRef.current;
+          const currentStrength = strengthRef.current * 2;
+          
+          if (currentMode === 'push') {
+            this.vx += (dx / dist) * force * currentStrength;
+            this.vy += (dy / dist) * force * currentStrength;
+          } else {
+            this.vx -= (dx / dist) * force * currentStrength;
+            this.vy -= (dy / dist) * force * currentStrength;
+          }
+          this.radius = this.baseRadius * (1 + force * 2);
+        } else {
+          this.radius = this.baseRadius;
+        }
+
+        // Friction
+        this.vx *= 0.98;
+        this.vy *= 0.98;
       }
 
       draw() {
@@ -94,7 +122,7 @@ export const Background: React.FC = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       for (let i = 0; i < particles.length; i++) {
-        particles[i].update();
+        particles[i].update(mouseX, mouseY);
         particles[i].draw();
 
         // Connect particles
@@ -103,39 +131,13 @@ export const Background: React.FC = () => {
           const dy = particles[i].y - particles[j].y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
-          if (dist < 100) {
+          if (dist < 120) {
             ctx.beginPath();
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.strokeStyle = `rgba(148, 163, 184, ${0.15 * (1 - dist / 100)})`;
+            ctx.strokeStyle = `rgba(148, 163, 184, ${0.1 * (1 - dist / 120)})`;
             ctx.lineWidth = 0.5;
             ctx.stroke();
-          }
-        }
-
-        // Connect to mouse
-        const dxMouse = particles[i].x - mouseX;
-        const dyMouse = particles[i].y - mouseY;
-        const distMouse = Math.sqrt(dxMouse * dxMouse + dyMouse * dyMouse);
-
-        if (distMouse < 150) {
-          ctx.beginPath();
-          ctx.moveTo(particles[i].x, particles[i].y);
-          ctx.lineTo(mouseX, mouseY);
-          ctx.strokeStyle = `rgba(129, 140, 248, ${0.3 * (1 - distMouse / 150)})`;
-          ctx.lineWidth = 0.8;
-          ctx.stroke();
-          
-          // Apply push or pull effect
-          const currentMode = modeRef.current;
-          const currentStrength = strengthRef.current;
-          
-          if (currentMode === 'push') {
-            particles[i].x += dxMouse * currentStrength;
-            particles[i].y += dyMouse * currentStrength;
-          } else if (currentMode === 'pull') {
-            particles[i].x -= dxMouse * currentStrength;
-            particles[i].y -= dyMouse * currentStrength;
           }
         }
       }
